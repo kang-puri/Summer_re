@@ -95,6 +95,7 @@ class Env:
         #assert self.action_space.contains(action), err_msg
         #assert self.state is not None, "Call reset before using step method."
         x, y, z = self.state
+        UEidx_list = self.UEidx_list
         #print([x,y,z],[x_ue,y_ue,z_ue])
         t = 0
         if action == 0:#위
@@ -127,7 +128,6 @@ class Env:
         SNR_list = []
         #print(UAV_list, UE_list)
         self.state = (x, y, z)
-
         done = bool(
             #UAV_list[0] < -62 or UAV_list[0] > 62
             UAV_list[1] > c or UAV_list[1] < -20
@@ -136,16 +136,18 @@ class Env:
         )
         if not done:
             #print(pathloss(UAV_list, UE_list))
-            n_ue = range(0, 500)
+            n_ue = [*range(0, len(UEidx_list))]
             for numue in n_ue:
-                SNR = pathloss(UAV_list, UE_list[numue])[1]
+                SNR = pathloss(UAV_list, UE_list[UEidx_list[numue]])[1]
                 SNR_list.append(SNR)
+
             GOODUE = SNR_list.index(max(SNR_list))
-            SerUE_list.append(GOODUE)
+            UEidx_list.remove(GOODUE)
             Datarate = pathloss(UAV_list, UE_list[GOODUE])[0]
             reward = Datarate
         else:
             reward = -5
+        self.UEidx_list = UEidx_list
 
         return np.array(self.state, dtype=np.float32), reward, done, {}
 
@@ -156,7 +158,9 @@ class Env:
         x = 0
         y = 0
         z = 0
+        UEidx_list = [*range(0, 500)]
         self.state = (x, y, z)
+        self.UEidx_list = UEidx_list
         if not return_info:
             return np.array(self.state, dtype=np.float32)
         else:
