@@ -1,0 +1,169 @@
+import numpy as np
+
+from gym import spaces
+
+def dis(a_list, b_list):
+    d = np.sqrt((a_list[0] - b_list[0]) ** 2 + (a_list[1] - b_list[1]) ** 2 + (a_list[2] - b_list[2]) ** 2)
+    return d
+
+
+def disg(a_list, b_list):
+    dg = np.sqrt((a_list[0] - b_list[0]) ** 2 + (a_list[1] - b_list[1]) ** 2)
+    return dg
+
+
+def pathloss(a_list, b_list):
+    c = 1
+    fghz = 5.5
+    f = 2  # 한층 높이
+    G_no = -2
+    G_uav = 0
+    P_node = 20
+    B = 20 * 10 ** 6
+    noise = -174 + 10 * np.log10(B)
+    pos_bp = [(b_list[0] - a_list[0]) * ((c - a_list[1]) / (b_list[1] - a_list[1])) + a_list[0], c,
+              (b_list[2] - a_list[2]) * ((c - a_list[1]) / (b_list[1] - a_list[1])) + a_list[2]]
+    PLb = 20 * np.log10(dis(a_list, b_list) * fghz) + 32.4
+    tw = disg(a_list, b_list) / dis(a_list, b_list)
+    PLtw = 14 + 15 * ((1 - tw) ** 2)
+    floor = round(abs(pos_bp[2] - a_list[2]) / f)
+    tw_floor = (b_list[1] - a_list[1]) / dis(a_list, b_list)
+    PLtw_floor = floor * (14 + 15 * ((1 - tw_floor) ** 2))
+    PLin = 0.5 * dis(pos_bp, a_list)
+    PL = PLb + PLtw + PLin + PLtw_floor
+    S = P_node + G_no + G_uav - PL
+    SNR = S - noise
+    if SNR < 0:
+        datarate = 0
+    elif SNR > 25:
+        datarate = 65
+    elif SNR > 20:
+        datarate = 58.5
+    elif SNR > 18:
+        datarate = 52
+    elif SNR > 15:
+        datarate = 39
+    elif SNR > 11:
+        datarate = 26
+    elif SNR > 9:
+        datarate = 19.5
+    elif SNR > 5:
+        datarate = 13
+    else:
+        datarate = 6.5
+    return datarate, SNR
+
+class Env:
+    def __init__(self):
+        self.action_space = spaces.Discrete(7)
+        self.observation_space = spaces.Discrete(3) #discrete, continuous면 Box()
+        self.state = None
+
+    def ue_make(self):
+        mil = range(1, 301)
+        ran = range(300, 501)
+        to = range(0,500)
+        x_ue = []
+        y_ue = []
+        z_ue = []
+        UE_list = []
+        for n in mil:
+            new_x = np.random.randint(30, 60)
+            x_ue.append(new_x)
+            new_y = np.random.randint(2, 11)
+            y_ue.append(new_y)
+            new_z = np.random.randint(19, 24)
+            z_ue.append(new_z)
+        for m in ran:
+            new_x = np.random.randint(-59, 30)
+            x_ue.append(new_x)
+            new_y = np.random.randint(2, 20)
+            y_ue.append(new_y)
+            new_z = np.random.randint(1, 29)
+            z_ue.append(new_z)
+        for u in to:
+            UE = [x_ue[u], y_ue[u], z_ue[u]]
+            UE_list.append(UE)
+
+        return UE_list
+
+    def step(self, action):
+
+        c = 1
+        fly = 1/20
+        #err_msg = f"{action!r} ({type(action)}) invalid"
+        #assert self.action_space.contains(action), err_msg
+        #assert self.state is not None, "Call reset before using step method."
+        x, y, z = self.state
+        #print([x,y,z],[x_ue,y_ue,z_ue])
+        t = 0
+        if action == 0:#위
+            z += 1
+            t += fly
+        if action == 1:#아래
+            z -= 1
+            t += fly
+        if action == 2:#오른쪽
+            x += 1
+            t += fly
+        if action == 3:#왼쪽
+            x -= 1
+            t += fly
+        if action == 4:#앞
+            y += 1
+            t += fly
+        if action == 5:#뒤
+            y -= 1
+            t += fly
+        if action == 6:#제자리
+            x += 0
+            y += 0
+            z += 0
+            #t += 1 / 20
+
+        #print(x, y, z)
+        UAV_list = [x,y,z]
+        UE_list = Env().ue_make()
+        SNR_list = []
+        #print(UAV_list, UE_list)
+        self.state = (x, y, z)
+
+        done = bool(
+            #UAV_list[0] < -62 or UAV_list[0] > 62
+            UAV_list[1] > c or UAV_list[1] < -20
+            or t > 240
+            #or UAV_list[2] < 0 or UAV_list[2] >32
+        )
+        if not done:
+            #print(pathloss(UAV_list, UE_list))
+            n_ue = range(0, 500)
+            for numue in n_ue:
+                SNR = pathloss(UAV_list, UE_list[numue])[1]
+                SNR_list.append(SNR)
+            GOODUE = SNR_list.index(max(SNR_list))
+            SerUE_list.append(GOODUE)
+            Datarate = pathloss(UAV_list, UE_list[GOODUE])[0]
+            reward = Datarate
+        else:
+            reward = -5
+
+        return np.array(self.state, dtype=np.float32), reward, done, {}
+
+    def reset(self,
+        *,
+        return_info: bool = False
+    ):
+        x = 0
+        y = 0
+        z = 0
+        self.state = (x, y, z)
+        if not return_info:
+            return np.array(self.state, dtype=np.float32)
+        else:
+            return np.array(self.state, dtype=np.float32), {}
+
+
+
+
+
+
